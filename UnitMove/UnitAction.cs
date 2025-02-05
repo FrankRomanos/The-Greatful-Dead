@@ -1,23 +1,29 @@
 using System;
-using System.Runtime.CompilerServices;
-using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine;
 
 public class UnitAction : MonoBehaviour
 {
     public static UnitAction Instance { get; private set; }
     public event EventHandler OnSelectedUnitChanged;
     public event EventHandler OnSelectedActionChanged;
+    public event EventHandler<bool> OnBusyChanged;
+    public event EventHandler OnActionStarted;
 
-    [SerializeField] private Unit selectedUnit;
     [SerializeField] private LayerMask UnitLayerMask;
 
+    private Unit selectedUnit;
     private BaseAction selectedAction;
     private bool isBusy;
 
     private void Start()
     {
-        SetSelectedUnit(selectedUnit);
+        // 游戏开始时不选中任何单位
+        selectedUnit = null;
+        selectedAction = null;
+        // 触发事件更新UI等
+        OnSelectedUnitChanged?.Invoke(this, EventArgs.Empty);
+        OnSelectedActionChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private void Awake()
@@ -37,11 +43,10 @@ public class UnitAction : MonoBehaviour
         {
             return;
         }
-        if(EventSystem.current.IsPointerOverGameObject ())
+        if (EventSystem.current.IsPointerOverGameObject())
         {
             return;
         }
-
 
         if (TryHandleUnitSelection())
         {
@@ -49,36 +54,43 @@ public class UnitAction : MonoBehaviour
         }
 
         HandleSelectedAction();
-
     }
 
     private void HandleSelectedAction()
     {
         if (Input.GetMouseButtonUp(0))
         {
+            // 如果没有选中单位，直接返回
+            if (selectedUnit == null)
+            {
+                return;
+            }
+
             GridPosition mouseGridPosition = LevelGrid.Instance.GetGridPosition(MouseWorld.GetPosition());
-            if (selectedAction.IsValidActionGridPosition(mouseGridPosition))
+            if (selectedAction != null && selectedAction.IsValidActionGridPosition(mouseGridPosition))
             {
                 if (selectedUnit.TrySpendActionPointsToTakeAction(selectedAction))
                 {
                     SetBusy();
                     selectedAction.TakeAction(mouseGridPosition, ClearBusy);
+                    OnActionStarted?.Invoke(this, EventArgs.Empty);
                 }
-
             }
         }
-
     }
 
     private void SetBusy()
     {
         isBusy = true;
+        OnBusyChanged?.Invoke(this,isBusy);
     }
 
     private void ClearBusy()
     {
         isBusy = false;
+        OnBusyChanged?.Invoke(this,isBusy);
     }
+
     private bool TryHandleUnitSelection()
     {
         if (Input.GetMouseButtonDown(0))
@@ -90,7 +102,7 @@ public class UnitAction : MonoBehaviour
                 {
                     if (unit == selectedUnit)
                     {
-                        //Unit is already selected
+                        // Unit is already selected
                         return false;
                     }
                     SetSelectedUnit(unit);
@@ -104,9 +116,10 @@ public class UnitAction : MonoBehaviour
     private void SetSelectedUnit(Unit unit)
     {
         selectedUnit = unit;
-        SetSelectedAction(unit.GetMoveAction());
+        // 选中单位时默认不执行任何动作
+        SetSelectedAction(null);
 
-        OnSelectedUnitChanged?.Invoke(this,EventArgs.Empty);
+        OnSelectedUnitChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public void SetSelectedAction(BaseAction baseAction)
@@ -124,7 +137,4 @@ public class UnitAction : MonoBehaviour
     {
         return selectedAction;
     }
-
 }
-
-

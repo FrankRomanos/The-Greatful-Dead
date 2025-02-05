@@ -16,7 +16,7 @@ public class SpinAction : BaseAction
         transform.eulerAngles += new Vector3(0, spinAddAmount, 0);
         totalSpinAmount += spinAddAmount;
 
-        if (totalSpinAmount > 360f)
+        if (totalSpinAmount > 180f)
         {
             isActive = false;
             onActionComplete();
@@ -47,6 +47,6 @@ public class SpinAction : BaseAction
     }
     public override int GetActionPointsCost()
     {
-        return 2;
+        return 1;
     }
 }
