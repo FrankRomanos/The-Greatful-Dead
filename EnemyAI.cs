@@ -1,16 +1,30 @@
+using System;
 using UnityEngine;
 
 public class EnemyAI : MonoBehaviour
 {
-    // Start is called once before the first execution of Update after the MonoBehaviour is created
-    void Start()
+    private float timer;
+
+    private void Start()
     {
-        
+        TurnSystem.Instance.OnTurnChanged += TurnSystem_OnTurnChanged;
+    }
+    private void Update()
+    {
+        if (TurnSystem.Instance.IsPlayerTurn())
+        {
+            return;
+        }
+
+        timer -= Time.deltaTime;
+        if (timer <= 0f)
+        {
+            TurnSystem.Instance.NextTurn();
+        }
     }
 
-    // Update is called once per frame
-    void Update()
+    private void TurnSystem_OnTurnChanged(object sender,EventArgs e)
     {
-        
+        timer = 2f;
     }
 }

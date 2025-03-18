@@ -18,16 +18,14 @@ public class SpinAction : BaseAction
 
         if (totalSpinAmount > 180f)
         {
-            isActive = false;
-            onActionComplete();
+            ActionComplete();
         }
 
     }
 
     public override void TakeAction(GridPosition gridPosition, Action onActionComplete)
     {
-        this.onActionComplete = onActionComplete;
-        isActive = true;
+        ActionStart(onActionComplete);
         totalSpinAmount = 0f;
     }
 
