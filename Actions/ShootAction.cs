@@ -5,10 +5,18 @@ using UnityEngine.EventSystems;
 
 public class ShootAction : BaseAction
 {
+    public event EventHandler<OnShootEventArgs> OnShoot;
+
+    public class OnShootEventArgs:EventArgs
+    {
+        public Unit targetUnit;
+        public Unit shootingUnit;
+    }
+
     private enum State
     {
         Aiming,
-        Shooting,   
+        Shooting,
         Cooloff,
     }
 
@@ -30,7 +38,7 @@ public class ShootAction : BaseAction
         switch (state)
         {
             case State.Aiming:
-            Vector3 airDir = (targetUnit.GetWorldPosition() - unit.GetWorldPosition()).normalized;
+                Vector3 airDir = (targetUnit.GetWorldPosition() - unit.GetWorldPosition()).normalized;
 
                 float rotateSpeed = 10f;
                 transform.forward = Vector3.Lerp(transform.forward, airDir, Time.deltaTime * rotateSpeed);
@@ -46,7 +54,7 @@ public class ShootAction : BaseAction
                 break;
         }
 
-        if(stateTimer <= 0f)
+        if (stateTimer <= 0f)
         {
             NextState();
         }
@@ -84,7 +92,12 @@ public class ShootAction : BaseAction
 
     private void Shoot()
     {
-        targetUnit.Damage();
+        OnShoot?.Invoke(this, new OnShootEventArgs
+        {
+            targetUnit = targetUnit,
+            shootingUnit = unit
+        });
+        targetUnit.Damage(40);
     }
 
     public override string GetActionName()
@@ -110,11 +123,11 @@ public class ShootAction : BaseAction
                 }
 
                 int testDistance = Mathf.Abs(x) + Mathf.Abs(z);
-                if(testDistance > maxShootDistance)
+                if (testDistance > maxShootDistance)
                 {
-                    continue; 
+                    continue;
                 }
-                
+
 
                 if (!LevelGrid.Instance.HasAnyUnitOnGridPosition(testGridPosition))
                 {
@@ -147,6 +160,6 @@ public class ShootAction : BaseAction
         float aimingStateTime = 1f;
         stateTimer = aimingStateTime;
 
-        canShootBullet = true;
+        canShootBullet = true;    
     }
 }

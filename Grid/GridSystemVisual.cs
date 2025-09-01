@@ -62,7 +62,10 @@ public class GridSystemVisual : MonoBehaviour
         HideAllGridPosition();
 
         BaseAction selectedAction = UnitAction.Instance.GetSelectedAction();
-        ShowAllGridPositionList(
-            selectedAction.GetValidActionGridPosition());
+        // 新增空引用检查：只有当选中了有效动作时，才显示网格
+        if (selectedAction != null)
+        {
+            ShowAllGridPositionList(selectedAction.GetValidActionGridPosition());
+        }
     }
 }

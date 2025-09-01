@@ -25,19 +25,21 @@ public class MoveAction : BaseAction
     {
         if (!isActive)
         {
-            return;            
+            return;
         }
-        float stopDistance = 0.1f;
+        float stopDistance = 0.2f;
         Vector3 moveDirection = (targetPosition - transform.position);
 
         if (Vector3.Distance(transform.position, targetPosition) > stopDistance)
-        {            
+        {
             float moveSpeed = 1f;
-            transform.position += moveDirection * moveSpeed * Time.deltaTime;          
+            transform.position += moveDirection * moveSpeed * Time.deltaTime;
+
+
         }
-        else 
-        { 
-            OnStopMoving?.Invoke(this,EventArgs.Empty);
+        else
+        {
+            OnStopMoving?.Invoke(this, EventArgs.Empty);
             ActionComplete();
         }
 
@@ -56,12 +58,12 @@ public class MoveAction : BaseAction
     {
         List<GridPosition> validGridPositionList = new List<GridPosition>();
         GridPosition unitGridPosition = unit.GetGridPosition();
- 
-        for (int x = -maxMoveDistance; x <= maxMoveDistance;x++)
+
+        for (int x = -maxMoveDistance; x <= maxMoveDistance; x++)
         {
             for (int z = -maxMoveDistance; z <= maxMoveDistance; z++)
             {
-                GridPosition offsetGridPosition = new GridPosition(x,z);
+                GridPosition offsetGridPosition = new GridPosition(x, z);
                 GridPosition testGridPosition = unitGridPosition + offsetGridPosition;
 
                 if (!LevelGrid.Instance.IsValidGridPosition(testGridPosition))
