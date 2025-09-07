@@ -1,6 +1,7 @@
 using GameCore;
-
+using GameCore.Equipment;
 using GameCore.Skill;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -24,6 +25,12 @@ namespace GameCore
 
         private Unit currentActingUnit;       // 当前行动的单位
         private float coolDownTimer = 0f;     // 冷却计时器
+                                              // 核心变量：存储BOSS技能触发的「额外操作时间=下回合扣除时间」（两者数值一致）
+        private float _extraOperateAndDeductTime = 0f; // 既是额外时间，也是下回合扣除量
+        public bool HasExtraOperateTime { get; private set; } = false; // 是否有未使用的额外时间
+
+        // BOSS释放技能时调用：传入该技能配置的「额外操作时间」（自动等同于下回合扣除时间）
+        /// <param name="extraOperateTime">玩家获得的额外操作时间（同时也是下回合要扣除的基础时间）</param>
 
 
         private void Awake()
@@ -47,7 +54,6 @@ namespace GameCore
                 coolDownTimer += Time.deltaTime;
                 if (coolDownTimer >= coolDownUpdateInterval)
                 {
-                    UpdateAllSkillCoolDown();
                     coolDownTimer = 0f;
                 }
             }
@@ -68,25 +74,30 @@ namespace GameCore
         /// <summary>
         /// 开始下一个单位的回合
         /// </summary>
-        public void StartNextUnitTurn()
+        private void StartNextUnitTurn()
         {
-            // 1. 确定当前阶段的单位列表（玩家/敌人/BOSS）
+            // 1. 获取当前阶段单位（玩家/BOSS/敌人）
             List<Unit> currentPhaseUnits = GetCurrentPhaseUnits();
-            if (currentPhaseUnits.Count == 0)
-                return;
+            if (currentPhaseUnits.Count == 0) return;
 
-            // 2. 处理索引溢出（循环到第一个单位）
+            // 2. 处理回合切换（索引超出时切换阶段）
             if (currentUnitIndex >= currentPhaseUnits.Count)
             {
-                SwitchTurnPhase(); // 切换回合阶段（玩家→BOSS/BOSS→玩家）
+                SwitchTurnPhase();
                 currentPhaseUnits = GetCurrentPhaseUnits();
                 currentUnitIndex = 0;
             }
 
-            // 3. 开始当前单位的回合
+            // 3. 获取当前行动单位
             currentActingUnit = currentPhaseUnits[currentUnitIndex];
             currentActingUnit.ResetTurnState();
-            Debug.Log($"=== {currentActingUnit.unitName} 回合开始（时长：{currentActingUnit.GetCurrentTurnDuration():F1}秒） ===");
+
+            // 【关键】回合开始：给当前单位的所有技能减1冷却回合
+            currentActingUnit.ReduceAllSkillCoolingByTurn();
+
+            // 4. 输出回合信息（含当前回合时间）
+            float turnTime = currentActingUnit.GetTurnTime();
+            Debug.Log($"=== {currentActingUnit.UnitName} 回合开始（持续{turnTime:F1}s） ===");
         }
 
         /// <summary>
@@ -219,30 +230,7 @@ namespace GameCore
 
 
         #region 辅助方法（冷却更新、顺序调整、状态重置）
-        /// <summary>
-        /// 更新所有单位的技能冷却
-        /// </summary>
-        private void UpdateAllSkillCoolDown()
-        {
-            UpdateUnitsCoolDown(playerUnits);
-            UpdateUnitsCoolDown(enemyUnits);
-            UpdateUnitsCoolDown(bossUnits);
-        }
 
-        /// <summary>
-        /// 更新单个列表中所有单位的技能冷却
-        /// </summary>
-        private void UpdateUnitsCoolDown(List<Unit> units)
-        {
-            foreach (var unit in units)
-            {
-                foreach (var skill in unit.skills)
-                {
-                    if (skill.currentCoolDown > 0)
-                        skill.currentCoolDown--;
-                }
-            }
-        }
 
         /// <summary>
         /// 调整玩家角色顺序（UI拖拽时调用）
@@ -276,6 +264,87 @@ namespace GameCore
             }
         }
         #endregion
+
+        public void TriggerBossSkillTimeRule(float extraOperateTime)
+        {
+            // 边界校验：额外时间≥0，且不超过基础回合时间（避免下回合时间为负）
+            float validTime = Mathf.Clamp(extraOperateTime, 0f, 6f); // 最多扣完基础6s
+            _extraOperateAndDeductTime = validTime;
+            HasExtraOperateTime = validTime > 0f;
+
+            if (HasExtraOperateTime)
+            {
+                Debug.Log($"=== BOSS技能触发：获得{validTime}s额外操作时间（将从下回合基础时间中扣除） ===");
+                // 建议添加UI提示（如屏幕中显示“额外操作时间+{validTime}s！下回合时间减少{validTime}s”）
+            }
+        }
+
+        // 结束当前回合：直接标记额外时间可用（无需消耗流程，额外时间是独立操作窗口）
+        public void EndCurrentUnitTurn(Unit currentUnit)
+        {
+            if (currentUnit == null) return;
+
+            // 关键：额外时间不影响当前回合结束逻辑，仅标记状态（玩家可在额外时间内自由操作）
+            if (HasExtraOperateTime)
+            {
+                // 触发额外操作时间窗口（可在这里调用UI倒计时，如“额外操作时间剩余X秒”）
+                StartExtraOperateTimeCountdown();
+            }
+
+            // 正常切换回合（原有逻辑：索引+1、检查阶段切换）
+            currentUnitIndex++;
+            CheckTurnPhaseSwitch();
+            StartNextUnitTurn();
+        }
+
+        // 额外操作时间倒计时（独立于回合，倒计时结束自动进入下回合）
+        private void StartExtraOperateTimeCountdown()
+        {
+            StartCoroutine(ExtraTimeCountdownCoroutine(_extraOperateAndDeductTime));
+        }
+
+        private IEnumerator ExtraTimeCountdownCoroutine(float extraTime)
+        {
+            float remainingTime = extraTime;
+            while (remainingTime > 0f)
+            {
+                remainingTime -= Time.deltaTime;
+                // 可选：更新UI显示剩余时间（如“额外时间：{remainingTime:F1}s”）
+                yield return null;
+            }
+
+            // 额外时间结束，标记状态（下回合将扣除对应时间）
+            HasExtraOperateTime = false;
+            Debug.Log("额外操作时间结束，下回合将扣除对应基础时间");
+        }
+
+        // 开始下回合：应用扣除时间（核心修正：直接用_extraOperateAndDeductTime作为扣除量）
+        private void StartNextUnitTurn()
+        {
+            List<Unit> currentPhaseUnits = GetCurrentPhaseUnits(); // 原有：获取当前阶段单位（玩家/BOSS）
+            if (currentPhaseUnits.Count == 0 || currentUnitIndex >= currentPhasePhaseUnits.Count)
+            {
+                SwitchTurnPhase();
+                currentPhaseUnits = GetCurrentPhaseUnits();
+                currentUnitIndex = 0;
+            }
+
+            Unit nextUnit = currentPhasePhaseUnits[currentUnitIndex];
+            float baseTurnTime = nextUnit.GetTurnTime(); // 基础回合时间（6s+速度加成）
+
+            // 关键：下回合时间 = 基础时间 - 额外操作时间（即扣除量），最低保留1s避免无法操作
+            float finalTurnTime = Mathf.Max(1f, baseTurnTime - _extraOperateAndDeductTime);
+            _extraOperateAndDeductTime = 0f; // 扣除后重置，防止重复扣
+
+            // 输出回合信息（明确显示扣除时间）
+            Debug.Log($"=== {nextUnit.UnitName} 回合开始 | 基础时间{baseTurnTime:F1}s | 扣除{_extraOperateAndDeductTime:F1}s | 最终{finalTurnTime:F1}s ===");
+
+            // 原有逻辑：结算DOT、扣冷却回合、传递最终回合时间给单位
+            nextUnit.SettleAllDots();
+            nextUnit.ReduceAllSkillCoolingByTurn();
+            nextUnit.StartTurn(finalTurnTime); // 单位按最终时间执行回合
+        }
+
     }
 }
 

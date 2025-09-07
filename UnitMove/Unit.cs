@@ -32,7 +32,7 @@ namespace GameCore
         [Header("===== 原有：装备/天赋/技能系统 =====")]
         public List<Equipment> EquippedItems = new List<Equipment>();
         public List<TalentBase> LearnedTalents = new List<TalentBase>();
-        public List<Skill> Skills = new List<Skill>();
+        public List<Skill> Skills { get; private set; } = new List<Skill>();
 
         [Header("===== 原有：BOSS韧性性/威胁值系统 =====")]
         public bool BossHasToughness = true;
@@ -322,14 +322,94 @@ namespace GameCore
                 Attributes[AttributeType.ThreatGenerationBoost] = 0f;
             }
         }
+        #region 4. 能量系统（不变）
+        private void RegenEnergy(float deltaTime)
+        {
+            float regenAmount = EnergyRegenPerSec * deltaTime;
+            CurrentEnergy = Mathf.Min(CurrentEnergy + regenAmount, MaxEnergy);
+            OnEnergyChanged?.Invoke();
+        }
 
-        // （以下省略原有代码：EquipItem/UnequipItem、LearnTalent/ForgetTalent、RegenEnergy/ConsumeEnergy、
-        // StartTimedSequence/UpdateAllRunningSequences、TriggerDerivedAction、CalculateBossMaxToughness/ReduceToughness、
-        // ApplyToughnessAndThreat、BossTurnAction/PerformNormalAttack 等）
+        public bool ConsumeEnergy(float cost)
+        {
+            if (CurrentEnergy < cost) return false;
+            CurrentEnergy = Mathf.Max(0, CurrentEnergy - cost);
+            OnEnergyChanged?.Invoke();
+            return true;
+        }
         #endregion
 
+        #region 6. 派生动作管理（【新增】完整逻辑）
+        // 触发派生动作
+        public bool TriggerDerivedAction(Skill derivedSkill)
+        {
+            if (derivedSkill == null || derivedSkill.SkillType != SkillType.Derived)
+                return false;
 
-        // 原有辅助方法（完全保留）
+            // 检查派生动作是否可释放
+            if (!derivedSkill.CanUse(this)) return false;
+
+            // 释放派生动作
+            derivedSkill.Use(this, GetNearestTarget());
+            OnDerivedActionTriggered?.Invoke(derivedSkill);
+            return true;
+        }
+
+        // 标记前置技能已使用（派生动作依赖）
+        public void MarkSkillAsUsed(Skill preSkill)
+        {
+            if (preSkill == null && !_usedPreSkills.Contains(preSkill))
+            {
+                _usedPreSkills.Add(preSkill);
+                // 前置技能标记5秒后失效（避免永久触发）
+                Invoke(nameof(ClearUsedPreSkill), 5f);
+            }
+        }
+
+        #region 7. BOSS韧性+伤害处理（不变）
+        private void CalculateBossMaxToughness()
+        {
+            float maxTough = ToughnessSource == BossToughnessSource.PercentOfMaxHealth
+                ? Attributes[AttributeType.MaxHealth] * ToughnessPercent
+                : FixedToughnessValue;
+            Attributes[AttributeType.BossMaxToughness] = maxTough;
+        }
+
+        public void ReduceToughness(float reductionAmount)
+        {
+            if (!IsBoss || !BossHasToughness || IsInvulnerableToToughness) return;
+
+            if (Attributes.TryGetValue(AttributeType.BossCurrentToughness, out float currTough) &&
+                Attributes.TryGetValue(AttributeType.BossMaxToughness, out float maxTough))
+            {
+                float toughBoost = Attributes.TryGetValue(AttributeType.ToughnessReductionBoost, out var val) ? val : 0f;
+                float finalReduction = reductionAmount * (1 + toughBoost);
+                currTough = Mathf.Max(0, currTough - finalReduction);
+                Attributes[AttributeType.BossCurrentToughness] = currTough;
+
+                if (currTough <= 0)
+                {
+                    OnToughnessBroken?.Invoke();
+                    // 破韧后触发派生动作（装备/天赋可配置）
+                    foreach (var equip in EquippedItems)
+                    {
+                        equip.CheckTriggerEffect(this, DerivedActionTrigger.AfterToughnessBreak);
+                    }
+                }
+            }
+        }
+
+        public void ResetToughness()
+        {
+            if (!IsBoss || !BossHasToughness) return;
+            if (Attributes.TryGetValue(AttributeType.BossMaxToughness, out float maxTough))
+            {
+                Attributes[AttributeType.BossCurrentToughness] = maxTough;
+            }
+        }
+
+
+
         private float CalculateFinalDamage(float damage, DamageType damageType)
         {
             if (damageType == DamageType.Physical && Attributes.TryGetValue(AttributeType.Armor, out float armor))
@@ -340,6 +420,24 @@ namespace GameCore
             return damage;
         }
 
+        public void ApplyToughnessAndThreat(float damage, Skill skill, BattleUnit target)
+        {
+            if (target.IsBoss)
+            {
+                float toughReduction = damage * skill.ToughnessReductionRatio;
+                target.ReduceToughness(toughReduction);
+            }
+
+            if (IsPlayer && target.IsBoss)
+            {
+                float threat = damage * skill.ThreatGenerationRatio;
+                // 威胁值逻辑（不变）
+            }
+        }
+        #endregion
+
+
+        #region 8. 冷却系统（仅更新，无百分比）
         private void UpdateAllSkillCooling(float deltaTime)
         {
             foreach (var skill in Skills)
@@ -347,7 +445,11 @@ namespace GameCore
                 skill.UpdateCooling(deltaTime);
             }
         }
+        #endregion
 
-        // （其他原有辅助方法：如IsSpecialSkill、ClearUsedPreSkill等，完全保留）
+        // （以下省略原有代码：EquipItem/UnequipItem、LearnTalent/ForgetTalent、RegenEnergy/ConsumeEnergy、
+        // StartTimedSequence/UpdateAllRunningSequences、TriggerDerivedAction、CalculateBossMaxToughness/ReduceToughness、
+        // ApplyToughnessAndThreat、BossTurnAction/PerformNormalAttack 等）
     }
 }
+#endregion

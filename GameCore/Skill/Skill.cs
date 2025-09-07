@@ -15,18 +15,18 @@ namespace GameCore.Skill
         public DamageType DamageType;
         public Sprite SkillIcon;
 
-        [Header("消耗与冷却（【修改】仅固定冷却，支持减秒数）")]
-        public float EnergyCost;          // 能量消耗（派生动作可设0）
-        public float BaseCoolingTime;     // 基础冷却时间（秒）
-        public float CurrentCoolingTime;  // 当前冷却（实时更新）
+        [Header("冷却配置（回合数，1回合=6s）")]
+        public int EnergyCost;          // 能量消耗（派生动作可设0）
+        public int BaseCoolingTurns; // 基础冷却回合数（如2→12s）
+        public int CurrentCoolingTurns { get; private set; } = 0;
         public bool IgnoreCoolingOnDerived; // 派生动作是否忽略冷却
 
         [Header("【新增】持续动作配置（仅SkillType=TimedSequence生效）")]
         public TimedSequenceData TimedSequence;
 
         [Header("【新增】派生动作配置（仅SkillType=Derived生效）")]
-        public Skill RequiredPreSkill;    // 依赖的前置技能
-        public float DerivedActionTime;   // 派生动作耗时（比标准动作短）
+        public EquipmentSkill RequiredPreSkill;    // 依赖的前置技能
+        public int DerivedActionTime;   // 派生动作耗时（比标准动作短）
 
         [Header("伤害与效果（不变）")]
         public float DamageRatio;         // 伤害倍率
@@ -38,7 +38,7 @@ namespace GameCore.Skill
         public bool CanUse(Unit caster)
         {
             // 冷却判断（派生动作可忽略）
-            if (!IgnoreCoolingOnDerived && CurrentCoolingTime > 0) return false;
+            if (!IgnoreCoolingOnDerived && CurrentCoolingTurns > 0) return false;
 
             // 能量判断（派生动作可设0）
             if (caster.CurrentEnergy < EnergyCost) return false;
@@ -65,8 +65,8 @@ namespace GameCore.Skill
         public void ReduceCoolingTime(float reduceSeconds)
         {
             if (reduceSeconds <= 0) return;
-            CurrentCoolingTime = Mathf.Max(0, CurrentCoolingTime - reduceSeconds);
-            Debug.Log($"{SkillName} 冷却减少 {reduceSeconds} 秒，剩余：{CurrentCoolingTime:F1}秒");
+            CurrentCoolingTurns = Mathf.Max(0, CurrentCoolingTurns - reduceSeconds);
+            Debug.Log($"{SkillName} 冷却减少 {reduceSeconds} 秒，剩余：{CurrentCoolingTurns:F1}秒");
         }
 
         // 【补全】释放技能（分类型处理：普通/持续/派生）
@@ -97,7 +97,7 @@ namespace GameCore.Skill
             // 启动冷却（派生动作可忽略）
             if (!IgnoreCoolingOnDerived)
             {
-                CurrentCoolingTime = BaseCoolingTime;
+                CurrentCoolingTurns = BaseCoolingTurns;
             }
 
             // 触发装备/天赋的技能后特效（如减冷却）
@@ -178,13 +178,38 @@ namespace GameCore.Skill
                 : 0f;
         }
 
-        // 冷却更新（仅减时间，不变）
-        public void UpdateCooling(float deltaTime)
+        public void ReduceCoolingTurns(int reduceTurns)
         {
-            if (CurrentCoolingTime > 0)
+            if (reduceTurns <= 0) return;
+            CurrentCoolingTurns = Mathf.Max(0, CurrentCoolingTurns - reduceTurns);
+            Debug.Log($"{SkillName} 冷却减少{reduceTurns}回合，剩余：{CurrentCoolingTurns}回合");
+        }
+
+        // 检查技能是否可用（冷却判断改为回合数）
+        public bool CanUse(Unit caster)
+        {
+            // 冷却判断：当前冷却回合数>0则不可用
+            if (!IgnoreCoolingOnDerived && CurrentCoolingTurns > 0)
             {
-                CurrentCoolingTime = Mathf.Max(0, CurrentCoolingTime - deltaTime);
+                Debug.Log($"{SkillName} 冷却中（剩余{CurrentCoolingTurns}回合）");
+                return false;
             }
+            // 其他判断（能量、前置技能）...
+            return true;
+        }
+
+        // 技能使用后设置冷却（用回合数）
+        public virtual bool Use(Unit caster, Unit target = null)
+        {
+            if (!CanUse(caster) || target == null) return false;
+            // ... 其他逻辑（消耗能量、执行技能）
+
+            // 设置冷却回合数（替代原CurrentCoolingTime=BaseCoolingTime）
+            if (!IgnoreCoolingOnDerived)
+            {
+                CurrentCoolingTurns = BaseCoolingTurns;
+            }
+            return true;
         }
     }
 }
