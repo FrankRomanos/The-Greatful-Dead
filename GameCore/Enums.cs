@@ -22,6 +22,7 @@ namespace GameCore
         Attack,             // 攻击值（技能伤害基础）
         Speed,              // 战斗速度（影响动作时间）
         MoveSpeed,          // 移动速度（格子/秒）
+        Armor,              // 护甲（物理减伤）
 
         // 能量系统（不变）
         MaxEnergy,          // 能量上限
@@ -31,8 +32,10 @@ namespace GameCore
         CoolingReductionOnSkillUse, // 使用技能后减冷却秒数（装备/天赋可加）
 
         // 玩家专属（不变）
+        Strengt,
+        Agility,
         Stamina,            // 耐力（提高生命）
-        Armor,              // 护甲（物理减伤）
+        Mastery,             // 精通
         CriticalChance,     // 暴击率（%）
         ToughnessReductionBoost, // 削韧增强比例
         ThreatGenerationBoost, // 威胁值值增强比例（0.2=20%，装备/天赋可加）

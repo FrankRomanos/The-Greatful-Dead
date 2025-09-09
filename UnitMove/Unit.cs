@@ -1,5 +1,5 @@
 using GameCore;
-using GameCore.Action;
+using GameCore.TurnAction;
 using GameCore.Equipment;
 using GameCore.Skill;
 using GameCore.Talent;
@@ -30,9 +30,10 @@ namespace GameCore
         public Vector3 HpSliderOffset = new(0, 2, 0); // 血条相对于角色的偏移（避免挡住模型）
 
         [Header("===== 原有：装备/天赋/技能系统 =====")]
-        public List<Equipment> EquippedItems = new List<Equipment>();
+        public List<EquipmentBase> EquippedItems = new List<EquipmentBase>();
         public List<TalentBase> LearnedTalents = new List<TalentBase>();
-        public List<Skill> Skills { get; private set; } = new List<Skill>();
+        public List<SkillBase> Skills { get; private set; } = new List<SkillBase>();
+        private List<(SkillBase Skill, TimedSequenceData Sequence, Unit Target)> _runningTimedSequences = new();
 
         [Header("===== 原有：BOSS韧性性/威胁值系统 =====")]
         public bool BossHasToughness = true;
@@ -57,7 +58,7 @@ namespace GameCore
         public event Action OnToughnessBroken;
         public event Action<TalentBase, bool> OnTalentStateChanged;
         public event Action<TimedSequenceData, TimedSequenceState> OnTimedSequenceStateChanged;
-        public event Action<Skill> OnDerivedActionTriggered;
+        public event Action<SkillBase> OnDerivedActionTriggered;
         public event Action<float, float> OnHpChanged; // 新增：HP变化时触发（用于UI更新）
         public event Action<bool> OnMoveStateChanged; // 新增：移动状态变化时触发（比如禁用移动时的反馈）
 
@@ -119,6 +120,164 @@ namespace GameCore
                 UpdateHpSliderPosition();
         }
 
+
+        // 新增：判断当前单位是否有正在运行的时序动作（核心逻辑：检查列表中是否有状态为Running的时序）
+        public bool IsTimedSequenceRunning()
+        {
+            // 情况1：如果没有任何运行中的时序，直接返回false
+            if (_runningTimedSequences.Count == 0)
+                return false;
+
+            // 情况2：遍历所有时序，只要有一个状态是“Running”，就返回true
+            foreach (var (_, sequence, _) in _runningTimedSequences)
+            {
+                // 注意：这里需要确保 TimedSequenceData 类里有“State”属性（之前的代码应该定义过，比如枚举 TimedSequenceState）
+                if (sequence.State == TimedSequenceState.Running)
+                {
+                    return true;
+                }
+            }
+
+            // 情况3：有时序但都不是Running状态（比如已完成/中断），返回false
+            return false;
+        }
+
+        // 实现UpdateAllRunningSequences方法
+        public void UpdateAllRunningSequences(float deltaTime)
+        {
+            // 遍历副本避免修改集合时报错
+            var sequencesCopy = new List<(SkillBase, TimedSequenceData, Unit)>(_runningTimedSequences);
+            foreach (var (skill, sequence, target) in sequencesCopy)
+            {
+                if (sequence.State == TimedSequenceState.Running)
+                {
+                    skill.UpdateTimedSequence(this, target, deltaTime);
+                    // 若技能完成/中断，从列表移除
+                    if (sequence.State is TimedSequenceState.Completed or TimedSequenceState.Interrupted)
+                    {
+                        _runningTimedSequences.Remove((skill, sequence, target));
+                        OnTimedSequenceStateChanged?.Invoke(sequence, sequence.State);
+                    }
+                }
+            }
+        }
+
+        // 补充StartTimedSequence方法（与Update配套，用于启动时序技能）
+        public void StartTimedSequence(TimedSequenceData sequence, SkillBase skill, Unit target)
+        {
+            if (sequence.State != TimedSequenceState.Ready) return;
+
+            sequence.State = TimedSequenceState.Running;
+            sequence.ElapsedTime = 0f;
+            sequence.LastIntervalTime = 0f;
+            _runningTimedSequences.Add((skill sequence, target));
+            sequence.OnSequenceStart?.Invoke();
+            OnTimedSequenceStateChanged?.Invoke(sequence, sequence.State);
+        }
+
+        // Unit.cs 中添加
+        public Unit GetNearestTarget(bool isEnemyTarget = true)
+        {
+            var allUnits = LevelGrid.Instance.GetAllUnits(); // 需确保LevelGrid有该方法
+            Unit nearestTarget = null;
+            float minDistance = float.MaxValue;
+            Vector3 selfPos = transform.position;
+
+            foreach (var unit in allUnits)
+            {
+                // 过滤：非自身 + 目标类型匹配（敌人/友方）
+                if (unit == this) continue;
+                if (unit.IsEnemy() != isEnemyTarget) continue;
+                if (unit.Attributes.TryGetValue(AttributeType.Health, out float hp) && hp <= 0) continue; // 过滤死亡单位
+
+                // 计算距离
+                float distance = Vector3.Distance(selfPos, unit.transform.position);
+                if (distance < minDistance)
+                {
+                    minDistance = distance;
+                    nearestTarget = unit;
+                }
+            }
+            return nearestTarget;
+        }
+
+        // 补充LevelGrid的GetAllUnits方法（若不存在）
+        // LevelGrid.cs 中添加
+        public List<Unit> GetAllUnits()
+        {
+            var allUnits = new List<Unit>();
+            foreach (var cell in gridCellDictionary.Values) // 假设gridCellDictionary是格子存储
+            {
+                if (cell.HasUnit())
+                {
+                    allUnits.Add(cell.GetUnit());
+                }
+            }
+            return allUnits;
+        }
+
+        // Unit.cs 中添加字段（记录已使用的前置技能，回合内有效）
+        private HashSet<SkillBase> _usedPreSkills = new();
+
+        // 标记前置技能为已使用
+        public void MarkSkillAsUsed(SkillBase preSkill)
+        {
+            if (preSkill != null)
+            {
+                _usedPreSkills.Add(preSkill);
+            }
+        }
+
+        // 检查前置技能是否已使用
+        public bool HasUsedSkill(SkillBase preSkill)
+        {
+            return _usedPreSkills.Contains(preSkill);
+        }
+
+        // 清除已使用的前置技能（如回合结束时调用）
+        public void ClearUsedPreSkill()
+        {
+            _usedPreSkills.Clear();
+        }
+
+        // 补充回合结束时调用ClearUsedPreSkill（在TurnManager中）
+        // TurnManager.cs 的回合切换逻辑中添加
+        private void EndTurn()
+        {
+            // 其他逻辑...
+            foreach (var unit in GetCurrentPhaseUnits())
+            {
+                unit.ClearUsedPreSkill(); // 每个单位清除前置技能记录
+            }
+            // 切换回合...
+        }
+
+        public void TriggerPostSkillEffects(SkillBase usedSkill)
+        {
+            // 1. 先触发所有装备的技能后特效
+            if (EquippedItems != null) // 避免列表列表为空导致报错
+            {
+                foreach (var equip in EquippedItems)
+                {
+                    if (equip != null) // 避免单个装备为空
+                    {
+                        equip.OnSkillUsedAfter(this, usedSkill); // 调用装备的“技能后逻辑”
+                    }
+                }
+            }
+
+            // 2. 再触发所有天赋的技能后特效
+            if (LearnedTalents != null)
+            {
+                foreach (var talent in LearnedTalents)
+                {
+                    if (talent != null)
+                    {
+                        talent.OnSkillUsedAfter(this, usedSkill); // 调用天赋的“技能后逻辑”
+                    }
+                }
+            }
+        }
 
         #region 新增：1. 移动逻辑（玩家手动控制，BOSS可扩展AI移动）
         // 玩家移动输入处理（2D示例，WSAD或方向键）
@@ -303,7 +462,7 @@ namespace GameCore
                 Attributes[AttributeType.MaxHealth] = 5000f;
                 Attributes[AttributeType.Health] = 5000f;
                 Attributes[AttributeType.Attack] = 150f;
-                Attributes[AttributeType.Speed] = 1.2f;
+                Attributes[AttributeType.Speed] = 0;
                 Attributes[AttributeType.MoveSpeed] = 2f;
                 Attributes[AttributeType.CoolingReductionOnSkillUse] = 0f;
                 Attributes[AttributeType.ThreatGenerationBoost] = 0f;
@@ -312,16 +471,80 @@ namespace GameCore
             {
                 Attributes[AttributeType.MaxHealth] = 1000f;
                 Attributes[AttributeType.Health] = 1000f;
-                Attributes[AttributeType.Attack] = 50f;
-                Attributes[AttributeType.Speed] = 1f;
-                Attributes[AttributeType.MoveSpeed] = 3f;
+                Attributes[AttributeType.Attack] = 100f;
+                Attributes[AttributeType.Speed] = 0;
+                Attributes[AttributeType.MoveSpeed] = 4f;
                 Attributes[AttributeType.MaxEnergy] = 200f;
                 Attributes[AttributeType.EnergyRegenPerSec] = 10f;
                 Attributes[AttributeType.CoolingReductionOnSkillUse] = 0f;
                 Attributes[AttributeType.ToughnessReductionBoost] = 0f;
                 Attributes[AttributeType.ThreatGenerationBoost] = 0f;
+
             }
         }
+        public void AddAttribute(AttributeType attrType, float addValue)
+        {
+            if (!Enum.IsDefined(typeof(AttributeType), attrType))
+            {
+                Debug.LogWarning($"无效属性：{attrType}");
+                return;
+            }
+
+            // 已有该属性：累加加成；没有：直接赋值（避免Key不存在错误）
+            if (Attributes.ContainsKey(attrType))
+            {
+                Attributes[attrType] += addValue;
+            }
+            else
+            {
+                Attributes[attrType] = addValue; // 新增属性（比如天赋加的新属性）
+            }
+
+            // 特殊处理：MaxEnergy变化时同步当前能量
+            if (attrType == AttributeType.MaxEnergy)
+            {
+                CurrentEnergy = Mathf.Min(CurrentEnergy, Attributes[attrType]);
+            }
+
+            Debug.Log($"{UnitName} {attrType}增加{addValue}，当前值：{Attributes[attrType]}");
+        }
+
+        /// <summary>
+        /// 移除属性加成（和Add对应，float类型）
+        /// </summary>
+        public void RemoveAttribute(AttributeType attrType, float removeValue)
+        {
+            if (!Enum.IsDefined(typeof(AttributeType), attrType) || !Attributes.ContainsKey(attrType))
+            {
+                Debug.LogWarning($"无法移除属性：{attrType}（无效或不存在）");
+                return;
+            }
+
+            // 扣减后确保不小于0（避免属性变负数）
+            Attributes[attrType] = Mathf.Max(0f, Attributes[attrType] - removeValue);
+
+            // 特殊处理：MaxEnergy减少时同步当前能量
+            if (attrType == AttributeType.MaxEnergy)
+            {
+                CurrentEnergy = Mathf.Min(CurrentEnergy, Attributes[attrType]);
+            }
+
+            Debug.Log($"{UnitName} {attrType}减少{removeValue}，当前值：{Attributes[attrType]}");
+        }
+
+        /// <summary>
+        /// 获取属性最终值（直接返回你的Attributes字典值，无额外逻辑）
+        /// </summary>
+        public float GetFinalAttributeValue(AttributeType attrType)
+        {
+            // 存在属性则返回值，不存在返回0（避免Key不存在错误）
+            Attributes.TryGetValue(attrType, out float value);
+            return value;
+        }
+
+
+
+        #endregion
         #region 4. 能量系统（不变）
         private void RegenEnergy(float deltaTime)
         {
@@ -338,10 +561,36 @@ namespace GameCore
             return true;
         }
         #endregion
+        #region 5.  TurnTime
+        /// <summary>
+        /// 获取当前单位的回合时间（整数秒，速度越高时间越长）
+        /// </summary>
+        private Dictionary<AttributeType, (int BaseValue, int EquipAddedValue)> _attributeDict = new()
+        {
 
+            { AttributeType.Speed, (0, 0) },            // Speed初始0（你的设定），靠装备/天赋增加    
+            { AttributeType.MaxEnergy, (100, 0) },      // 初始最大能量100（之前确认的核心设定）
+            { AttributeType.EnergyRegenPerSec, (5, 0) }};   // 每秒回复5点（之前确认的核心设定）
+        public int GetTurnTime()
+        {
+            // 1. 基础回合时间（你之前确认的默认6秒）
+            int baseTurnTime = 6;
+
+            // 2. Speed影响：1点Speed=回合时间+1秒（你的核心规则）
+            int currentSpeed = GetFinalAttributeValue(AttributeType.Speed); // Speed是整数（装备/天赋增加）
+            int speedExtraTime = currentSpeed * 1; // 1点+1秒，无系数，直接相乘
+
+            // 3. 最终回合时间（整数，最低1秒避免异常）
+            int finalTurnTime = Math.Max(1, baseTurnTime + speedExtraTime);
+
+            // 日志：明确显示Speed对回合时间的影响（符合你的属性重要性设定）
+            Debug.Log($"{UnitName} 回合时间：基础{baseTurnTime}s + Speed({currentSpeed}点)×1s = {finalTurnTime}s");
+            return finalTurnTime;
+        }
+        #endregion
         #region 6. 派生动作管理（【新增】完整逻辑）
         // 触发派生动作
-        public bool TriggerDerivedAction(Skill derivedSkill)
+        public bool TriggerDerivedAction(SkillBase derivedSkill)
         {
             if (derivedSkill == null || derivedSkill.SkillType != SkillType.Derived)
                 return false;
@@ -356,7 +605,7 @@ namespace GameCore
         }
 
         // 标记前置技能已使用（派生动作依赖）
-        public void MarkSkillAsUsed(Skill preSkill)
+        public void MarkSkillAsUsed(SkillBase preSkill)
         {
             if (preSkill == null && !_usedPreSkills.Contains(preSkill))
             {
@@ -365,6 +614,7 @@ namespace GameCore
                 Invoke(nameof(ClearUsedPreSkill), 5f);
             }
         }
+        #endregion
 
         #region 7. BOSS韧性+伤害处理（不变）
         private void CalculateBossMaxToughness()
@@ -420,7 +670,7 @@ namespace GameCore
             return damage;
         }
 
-        public void ApplyToughnessAndThreat(float damage, Skill skill, BattleUnit target)
+        public void ApplyToughnessAndThreat(float damage, SkillBase skill, Unit target)
         {
             if (target.IsBoss)
             {
@@ -452,4 +702,3 @@ namespace GameCore
         // ApplyToughnessAndThreat、BossTurnAction/PerformNormalAttack 等）
     }
 }
-#endregion
