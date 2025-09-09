@@ -36,15 +36,15 @@ public class LevelGrid : MonoBehaviour
         return gridObject.GetUnitList();
     }
 
-    public void RemoveUnitAtGridPosition(GridPosition gridPosition,Unit unit)
+    public void RemoveUnitAtGridPosition(GridPosition gridPosition, Unit unit)
     {
         GridObject gridObject = gridSystem.GetGridObject(gridPosition);
         gridObject.RemoveUnit(unit);
     }
 
-    public void UnitMoveGridPosition(Unit unit, GridPosition fromGridPosition,GridPosition toGridPosition)
+    public void UnitMoveGridPosition(Unit unit, GridPosition fromGridPosition, GridPosition toGridPosition)
     {
-        RemoveUnitAtGridPosition(fromGridPosition,unit);
+        RemoveUnitAtGridPosition(fromGridPosition, unit);
         AddUnitAtGridPosition(toGridPosition, unit);
     }
 

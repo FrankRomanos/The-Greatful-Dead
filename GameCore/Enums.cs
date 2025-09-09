@@ -2,16 +2,8 @@ using System;
 
 namespace GameCore
 {
-    // 【恢复完整】动作类型（含持续/派生动作，和之前磨合一致）
-    public enum ActionType
-    {
-        Standard,           // 标准动作（耗时间，无次数限制）
-        FullTurn,           // 整轮动作（耗整个回合，直接结束）
-        Reaction,           // 反应动作（不耗自身回合，特定时机触发）
-        Free,               // 自由动作（不耗时间，每回合限3次）
-        Derived,            // 派生动作（依赖前置动作，耗少量时间）
-        TimedSequence       // 时序持续动作（BOSS/玩家专属，帧更新+可中断）
-    }
+
+
 
     // 属性类型（删除百分比冷却缩减，加“冷却减少触发”相关标记，支持联动）
     public enum AttributeType
