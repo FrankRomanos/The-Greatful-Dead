@@ -74,14 +74,14 @@ public abstract class FullRoundAction : BaseAction
     // 行动点消耗（消耗所有剩余行动点）
     public override int GetActionPointsCost()
     {
-        return unit.RemainingActionPoints; // 假设Unit有剩余行动点字段
+        return unit.GetActionPoints(); // 假设Unit有剩余行动点字段
     }
 
     // 可执行条件：冷却结束 + 有足够行动点 + 基类条件
     public override bool CanExecute()
     {
         return CurrentCoolingSeconds <= 0
-               && unit.RemainingActionPoints >= GetActionPointsCost()
+               && unit.GetActionPoints() >= GetActionPointsCost()
                && base.CanExecute();
     }
 
