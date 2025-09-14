@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
 
-public class ShootAction : BaseAction
+public class ShootAction : StandardAction
 {
     public event EventHandler<OnShootEventArgs> OnShoot;
 
@@ -162,4 +162,6 @@ public class ShootAction : BaseAction
 
         canShootBullet = true;    
     }
+
+
 }

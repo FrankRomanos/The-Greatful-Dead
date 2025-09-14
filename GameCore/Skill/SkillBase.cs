@@ -9,8 +9,13 @@ namespace GameCore.Skill
     [CreateAssetMenu(fileName = "NewSkill", menuName = "GameCore/NewSkill")]
     public class SkillBase : ScriptableObject
     {
+        public bool CanUse(Unit caster)
+        {
+
+
+            return true;
+        }
+
 
     }
-
-
 }

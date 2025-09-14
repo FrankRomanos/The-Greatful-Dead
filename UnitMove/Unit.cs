@@ -1,19 +1,25 @@
+using GameCore.Skill;
 using System;
+using System.Collections.Generic;
 using Unity.VisualScripting;
 using UnityEngine;
 
 public class Unit : MonoBehaviour
 {
+    [Header("===== 基础单位信息（原始） =====")]
+    public string UnitName;
     private const int ACTION_POINTS_MAX = 6;
 
     [SerializeField] private bool isEnemy;
 
     public static event EventHandler OnAnyActionPointsChanged;
+    private HashSet<string> _usedPreSkillIDs = new();
 
+    private int _remainingTurnTime;
     private GridPosition gridPosition;
     private HealthSystem healthSystem;
     private MoveAction moveAction;
-    private SpinAction spinAction;
+
     private BaseAction[] baseActionArray;
     private int actionPoints = ACTION_POINTS_MAX;
 
@@ -22,7 +28,7 @@ public class Unit : MonoBehaviour
     {
         healthSystem = GetComponent<HealthSystem>();
         moveAction = GetComponent<MoveAction>();
-        spinAction = GetComponent<SpinAction>();
+
         baseActionArray = GetComponents<BaseAction>();
     }
 
@@ -45,15 +51,33 @@ public class Unit : MonoBehaviour
             gridPosition = newGridPosition;
         }
     }
+    // 标记“前置技能已使用”（存储其 SkillID）
+    public void MarkSkillAsUsed(SkillBase preSkill)
+    {
+
+    }
+
+    // 检查“前置技能是否已使用”（通过 SkillID 判断）
+
+
+    // 清理过期的前置技能ID（避免永久有效）
+    private void ClearExpiredPreSkillIDs()
+    {
+        // 若需要精确控制单个ID的过期时间，可改用 Dictionary<string, float> 存储时间戳
+        _usedPreSkillIDs.Clear();
+    }
+
+    // 回合结束时清理所有前置技能ID
+    public void ClearUsedPreSkill()
+    {
+        _usedPreSkillIDs.Clear();
+    }
 
     public MoveAction GetMoveAction()
     {
         return moveAction;
     }
-    public SpinAction GetSpinAction()
-    {
-        return spinAction;
-    }
+
 
     public GridPosition GetGridPosition()
     {
@@ -131,4 +155,20 @@ public class Unit : MonoBehaviour
 
         Destroy(gameObject);
     }
+    public void RefundActionPoints(int amount)
+    {
+        // 避免行动点超过最大值（可选逻辑，根据游戏规则决定）
+        actionPoints = Mathf.Min(actionPoints + amount, ACTION_POINTS_MAX);
+        // 触发事件，通知UI更新行动点显示（与SpendActionPoints保持一致）
+        OnAnyActionPointsChanged?.Invoke(this, EventArgs.Empty);
+    }
+    public int GetRemainingTurnTime() => _remainingTurnTime;
+
+    // 设置剩余时间（int）
+    public void SetRemainingTurnTime(int time)
+    {
+        _remainingTurnTime = Mathf.Max(0, time);
+    }
+
+
 }
