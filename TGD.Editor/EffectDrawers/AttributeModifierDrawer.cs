@@ -1,72 +1,60 @@
 using UnityEditor;
 using UnityEngine;
+using TGD.Data;
 
 namespace TGD.Editor
 {
+    /// <summary>
+    /// Attribute Modifier 的可视化 Drawer（支持可见性开关 + 分级 L1~L4）
+    /// 依赖：FieldVisibilityUI、PerLevelUI、EffectFieldMask
+    /// </summary>
     public class AttributeModifierDrawer : IEffectDrawer
     {
         public void Draw(SerializedProperty elem)
         {
             EditorGUILayout.LabelField("Attribute Modifier", EditorStyles.boldLabel);
 
-            // Attribute / ModifierType
+            // 基本字段（始终显示）
             EditorGUILayout.PropertyField(elem.FindPropertyRelative("attributeType"), new GUIContent("Attribute"));
             EditorGUILayout.PropertyField(elem.FindPropertyRelative("modifierType"), new GUIContent("Modifier Type"));
 
-            // ---------- 单值/通用 ----------
-            var perLevelProp = elem.FindPropertyRelative("perLevel");
-            EditorGUILayout.PropertyField(perLevelProp, new GUIContent("Use Per-Level Values"));
-            if (!perLevelProp.boolValue)
+            // —— 分级开关（可隐藏）——
+            if (FieldVisibilityUI.Toggle(elem, EffectFieldMask.PerLevel, "Per-Level Values"))
             {
-                EditorGUILayout.PropertyField(elem.FindPropertyRelative("valueExpression"),
-                    new GUIContent("Value Expression (e.g. 'atk*0.6+discipline*0.1')"));
-                EditorGUILayout.PropertyField(elem.FindPropertyRelative("duration"), new GUIContent("Duration (turns)"));
-                EditorGUILayout.PropertyField(elem.FindPropertyRelative("probability"), new GUIContent("Probability (%)"));
-            }
-            else
-            {
-                // ---------- 按等级覆盖 ----------
-                DrawPerLevelStringArray(elem.FindPropertyRelative("valueExprLevels"), "Value Expression by Level");
-                DrawPerLevelIntArray(elem.FindPropertyRelative("durationLevels"), "Duration by Level (turns)");
-                DrawPerLevelStringArray(elem.FindPropertyRelative("probabilityLvls"), "Probability by Level (%)");
+                var perLevel = elem.FindPropertyRelative("perLevel");
+                EditorGUILayout.PropertyField(perLevel, new GUIContent("Use Per-Level Values"));
+
+                if (perLevel.boolValue)
+                {
+                    // L1~L4：数值表达式 / 持续 / 概率
+                    PerLevelUI.DrawStringLevels(elem.FindPropertyRelative("valueExprLevels"), "Value Expression by Level");
+                    if (FieldVisibilityUI.Toggle(elem, EffectFieldMask.Duration, "Duration"))
+                        PerLevelUI.DrawIntLevels(elem.FindPropertyRelative("durationLevels"), "Duration by Level (turns)");
+                    if (FieldVisibilityUI.Toggle(elem, EffectFieldMask.Probability, "Probability"))
+                        PerLevelUI.DrawStringLevels(elem.FindPropertyRelative("probabilityLvls"), "Probability by Level (%)");
+                }
+                else
+                {
+                    // 单值：表达式 + 可选持续/概率
+                    EditorGUILayout.PropertyField(
+                        elem.FindPropertyRelative("valueExpression"),
+                        new GUIContent("Value Expression (e.g. '10', 'p', 'atk*0.5')")
+                    );
+
+                    if (FieldVisibilityUI.Toggle(elem, EffectFieldMask.Duration, "Duration"))
+                        EditorGUILayout.PropertyField(elem.FindPropertyRelative("duration"), new GUIContent("Duration (turns)"));
+
+                    if (FieldVisibilityUI.Toggle(elem, EffectFieldMask.Probability, "Probability"))
+                        EditorGUILayout.PropertyField(elem.FindPropertyRelative("probability"), new GUIContent("Probability (%)"));
+                }
             }
 
-            // 通用：目标与触发
-            EditorGUILayout.PropertyField(elem.FindPropertyRelative("target"), new GUIContent("Target"));
-            EditorGUILayout.PropertyField(elem.FindPropertyRelative("condition"), new GUIContent("Trigger Condition"));
-        }
+            // —— 目标 / 触发（可隐藏）——
+            if (FieldVisibilityUI.Toggle(elem, EffectFieldMask.Target, "Target"))
+                EditorGUILayout.PropertyField(elem.FindPropertyRelative("target"), new GUIContent("Target"));
 
-        private void DrawPerLevelStringArray(SerializedProperty arr, string label)
-        {
-            EnsureArraySize(arr, 4);
-            EditorGUILayout.LabelField(label, EditorStyles.boldLabel);
-            EditorGUI.indentLevel++;
-            for (int i = 0; i < 4; i++)
-            {
-                var p = arr.GetArrayElementAtIndex(i);
-                EditorGUILayout.PropertyField(p, new GUIContent($"L{i + 1}"));
-            }
-            EditorGUI.indentLevel--;
-        }
-
-        private void DrawPerLevelIntArray(SerializedProperty arr, string label)
-        {
-            EnsureArraySize(arr, 4);
-            EditorGUILayout.LabelField(label, EditorStyles.boldLabel);
-            EditorGUI.indentLevel++;
-            for (int i = 0; i < 4; i++)
-            {
-                var p = arr.GetArrayElementAtIndex(i);
-                EditorGUILayout.PropertyField(p, new GUIContent($"L{i + 1}"));
-            }
-            EditorGUI.indentLevel--;
-        }
-
-        private void EnsureArraySize(SerializedProperty arr, int size)
-        {
-            if (arr == null) return;
-            while (arr.arraySize < size) arr.InsertArrayElementAtIndex(arr.arraySize);
-            while (arr.arraySize > size) arr.DeleteArrayElementAtIndex(arr.arraySize - 1);
+            if (FieldVisibilityUI.Toggle(elem, EffectFieldMask.Condition, "Trigger Condition"))
+                EditorGUILayout.PropertyField(elem.FindPropertyRelative("condition"), new GUIContent("Trigger Condition"));
         }
     }
 }

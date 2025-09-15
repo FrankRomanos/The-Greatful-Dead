@@ -1,58 +1,51 @@
+using TGD.Data;
 using UnityEditor;
 using UnityEngine;
 
 namespace TGD.Editor
 {
-    public class GainResourceDrawer : DefaultEffectDrawer
+    public class GainResourceDrawer : IEffectDrawer
     {
-        public override void Draw(SerializedProperty elem)
+        public void Draw(SerializedProperty elem)
         {
             EditorGUILayout.LabelField("Gain Resource", EditorStyles.boldLabel);
-            EditorGUILayout.PropertyField(elem.FindPropertyRelative("resourceType"), new UnityEngine.GUIContent("Resource Type"));
-            EditorGUILayout.PropertyField(elem.FindPropertyRelative("value"), new UnityEngine.GUIContent("Value"));
-            EditorGUILayout.PropertyField(elem.FindPropertyRelative("target"), new UnityEngine.GUIContent("Target"));
-            EditorGUILayout.PropertyField(elem.FindPropertyRelative("probability"), new UnityEngine.GUIContent("Probability (%)"));
-            EditorGUILayout.PropertyField(elem.FindPropertyRelative("condition"), new UnityEngine.GUIContent("Trigger Condition")); var perLevelProp = elem.FindPropertyRelative("perLevel");
-            EditorGUILayout.PropertyField(perLevelProp, new GUIContent("Use Per-Level Values"));
-            if (!perLevelProp.boolValue)
+            EditorGUILayout.PropertyField(elem.FindPropertyRelative("resourceType"), new GUIContent("Resource Type"));
+
+            // 分级用于：数值/概率
+            if (FieldVisibilityUI.Toggle(elem, EffectFieldMask.PerLevel, "Per-Level Values"))
             {
-                EditorGUILayout.PropertyField(elem.FindPropertyRelative("duration"), new GUIContent("Duration (turns)"));
-                EditorGUILayout.PropertyField(elem.FindPropertyRelative("probability"), new GUIContent("Probability (%)"));
-            }
-            else
-            {
-                EnsureArraySize(elem.FindPropertyRelative("durationLevels"), 4);
-                EnsureArraySize(elem.FindPropertyRelative("probabilityLvls"), 4);
+                var perLevel = elem.FindPropertyRelative("perLevel");
+                EditorGUILayout.PropertyField(perLevel, new GUIContent("Use Per-Level Values"));
 
-                var dur = elem.FindPropertyRelative("durationLevels");
-                var prob = elem.FindPropertyRelative("probabilityLvls");
+                if (perLevel.boolValue)
+                {
+                    PerLevelUI.DrawStringLevels(elem.FindPropertyRelative("valueExprLevels"), "Value by Level (formula)");
+                    if (FieldVisibilityUI.Toggle(elem, EffectFieldMask.Probability, "Probability"))
+                        PerLevelUI.DrawStringLevels(elem.FindPropertyRelative("probabilityLvls"), "Probability by Level (%)");
+                }
+                else
+                {
+                    var valExpr = FieldVisibilityUI.GetProp(elem, "valueExpression", "value");
+                    if (valExpr != null)
+                        EditorGUILayout.PropertyField(valExpr, new GUIContent("Value (formula, e.g. '1', 'p', 'atk*0.1')"));
+                    else
+                        EditorGUILayout.HelpBox("Missing 'valueExpression' (or legacy 'value') field.", MessageType.Warning);
 
-                EditorGUILayout.LabelField("Duration by Level (turns)", EditorStyles.boldLabel);
-                EditorGUI.indentLevel++;
-                for (int i = 0; i < 4; i++)
-                    EditorGUILayout.PropertyField(dur.GetArrayElementAtIndex(i), new GUIContent($"L{i + 1}"));
-                EditorGUI.indentLevel--;
-
-                EditorGUILayout.LabelField("Probability by Level (%)", EditorStyles.boldLabel);
-                EditorGUI.indentLevel++;
-                for (int i = 0; i < 4; i++)
-                    EditorGUILayout.PropertyField(prob.GetArrayElementAtIndex(i), new GUIContent($"L{i + 1}"));
-                EditorGUI.indentLevel--;
+                    if (FieldVisibilityUI.Toggle(elem, EffectFieldMask.Probability, "Probability"))
+                        EditorGUILayout.PropertyField(elem.FindPropertyRelative("probability"), new GUIContent("Probability (%)"));
+                }
             }
 
-            EditorGUILayout.PropertyField(elem.FindPropertyRelative("condition"), new GUIContent("Trigger Condition"));
-        }
+            if (FieldVisibilityUI.Toggle(elem, EffectFieldMask.Target, "Target"))
+                EditorGUILayout.PropertyField(elem.FindPropertyRelative("target"), new GUIContent("Target"));
 
-        private void EnsureArraySize(SerializedProperty arr, int size)
-        {
-            if (arr == null) return;
-            while (arr.arraySize < size) arr.InsertArrayElementAtIndex(arr.arraySize);
-            while (arr.arraySize > size) arr.DeleteArrayElementAtIndex(arr.arraySize - 1);
+            if (FieldVisibilityUI.Toggle(elem, EffectFieldMask.Condition, "Trigger Condition"))
+                EditorGUILayout.PropertyField(elem.FindPropertyRelative("condition"), new GUIContent("Trigger Condition"));
         }
     }
 }
-    
 
 
-    
+
+
 

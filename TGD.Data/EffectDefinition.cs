@@ -95,6 +95,20 @@ namespace TGD.Data
         Percentage,  // % 提升
         Flat         // 固定值
     }
+    // 在 namespace TGD.Data 里，EffectDefinition 同级位置新增：
+    [System.Flags]
+    public enum EffectFieldMask
+    {
+        None = 0,
+        Probability = 1 << 0,  // 概率
+        Duration = 1 << 1,  // 持续（回合）
+        Target = 1 << 2,  // 作用目标
+        Condition = 1 << 3,  // 触发条件
+        Crit = 1 << 4,  // 可暴击
+        School = 1 << 5,  // 伤害学派（仅 Damage 用）
+        PerLevel = 1 << 6,  // 等级分段编辑开关
+    }
+
 
     [Serializable]
     public class EffectDefinition
@@ -112,6 +126,12 @@ namespace TGD.Data
         public string probability;     // 概率（字符串，允许 "p%"）
 
         public EffectCondition condition = EffectCondition.None;
+        public EffectFieldMask visibleFields =
+    EffectFieldMask.Probability |
+    EffectFieldMask.Duration |
+    EffectFieldMask.Target |
+    EffectFieldMask.Condition |
+    EffectFieldMask.PerLevel;   // 默认全开；你可按需改默认
         // ====== NEW: Damage/Heal 专用的小字段（很轻量）======
         public DamageSchool damageSchool = DamageSchool.Physical; // 仅 Damage 用
         public bool canCrit = true;                                // Damage/Heal 都可用

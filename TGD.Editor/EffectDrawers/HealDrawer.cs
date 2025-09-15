@@ -1,5 +1,6 @@
 using UnityEditor;
 using UnityEngine;
+using TGD.Data;
 
 namespace TGD.Editor
 {
@@ -9,45 +10,36 @@ namespace TGD.Editor
         {
             EditorGUILayout.LabelField("Heal", EditorStyles.boldLabel);
 
-            EditorGUILayout.PropertyField(elem.FindPropertyRelative("canCrit"), new GUIContent("Can Crit"));
+            if (FieldVisibilityUI.Toggle(elem, EffectFieldMask.Crit, "Critical"))
+                EditorGUILayout.PropertyField(elem.FindPropertyRelative("canCrit"), new GUIContent("Can Crit"));
 
-            var perLevelProp = elem.FindPropertyRelative("perLevel");
-            EditorGUILayout.PropertyField(perLevelProp, new GUIContent("Use Per-Level Values"));
-            if (!perLevelProp.boolValue)
+            if (FieldVisibilityUI.Toggle(elem, EffectFieldMask.PerLevel, "Per-Level Values"))
             {
-                EditorGUILayout.PropertyField(elem.FindPropertyRelative("valueExpression"),
-                    new GUIContent("Value Expression (e.g. 'atk*0.6')"));
-                EditorGUILayout.PropertyField(elem.FindPropertyRelative("probability"), new GUIContent("Probability (%)"));
-            }
-            else
-            {
-                EnsureSize(elem.FindPropertyRelative("valueExprLevels"), 4);
-                EnsureSize(elem.FindPropertyRelative("probabilityLvls"), 4);
+                var perLevel = elem.FindPropertyRelative("perLevel");
+                EditorGUILayout.PropertyField(perLevel, new GUIContent("Use Per-Level Values"));
 
-                var val = elem.FindPropertyRelative("valueExprLevels");
-                var prb = elem.FindPropertyRelative("probabilityLvls");
+                if (perLevel.boolValue)
+                {
+                    PerLevelUI.DrawStringLevels(elem.FindPropertyRelative("valueExprLevels"), "Value Expression by Level");
+                    if (FieldVisibilityUI.Toggle(elem, EffectFieldMask.Probability, "Probability"))
+                        PerLevelUI.DrawStringLevels(elem.FindPropertyRelative("probabilityLvls"), "Probability by Level (%)");
+                }
+                else
+                {
+                    EditorGUILayout.PropertyField(elem.FindPropertyRelative("valueExpression"),
+                        new GUIContent("Value Expression (e.g. 'atk*0.6')"));
 
-                EditorGUILayout.LabelField("Value Expression by Level", EditorStyles.boldLabel);
-                EditorGUI.indentLevel++;
-                for (int i = 0; i < 4; i++)
-                    EditorGUILayout.PropertyField(val.GetArrayElementAtIndex(i), new GUIContent($"L{i + 1}"));
-                EditorGUI.indentLevel--;
-
-                EditorGUILayout.LabelField("Probability by Level (%)", EditorStyles.boldLabel);
-                EditorGUI.indentLevel++;
-                for (int i = 0; i < 4; i++)
-                    EditorGUILayout.PropertyField(prb.GetArrayElementAtIndex(i), new GUIContent($"L{i + 1}"));
-                EditorGUI.indentLevel--;
+                    if (FieldVisibilityUI.Toggle(elem, EffectFieldMask.Probability, "Probability"))
+                        EditorGUILayout.PropertyField(elem.FindPropertyRelative("probability"), new GUIContent("Probability (%)"));
+                }
             }
 
-            EditorGUILayout.PropertyField(elem.FindPropertyRelative("target"), new GUIContent("Target"));
-            EditorGUILayout.PropertyField(elem.FindPropertyRelative("condition"), new GUIContent("Trigger Condition"));
-        }
+            if (FieldVisibilityUI.Toggle(elem, EffectFieldMask.Target, "Target"))
+                EditorGUILayout.PropertyField(elem.FindPropertyRelative("target"), new GUIContent("Target"));
 
-        private void EnsureSize(SerializedProperty arr, int n)
-        {
-            while (arr.arraySize < n) arr.InsertArrayElementAtIndex(arr.arraySize);
-            while (arr.arraySize > n) arr.DeleteArrayElementAtIndex(arr.arraySize - 1);
+            if (FieldVisibilityUI.Toggle(elem, EffectFieldMask.Condition, "Trigger Condition"))
+                EditorGUILayout.PropertyField(elem.FindPropertyRelative("condition"), new GUIContent("Trigger Condition"));
         }
     }
 }
+
